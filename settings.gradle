@@ -1,0 +1,5 @@
+rootProject.name = 'gradle-springboot'
+include 'Hello'
+include 'Word'
+include 'lib-oauth'
+
