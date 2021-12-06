@@ -8,6 +8,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 
 public class OauthUsage {
 
@@ -24,25 +25,25 @@ public class OauthUsage {
                 .GET()
                 .build();
         final var step0Response = cli.send(step0VerifyLoginStatus, HttpResponse.BodyHandlers.ofString());
-        assert (step0Response.statusCode() == 401);
 
+        assert (step0Response.statusCode() == 401);
         // step 1: 要向服务供应商 8081 发起登录
         final var s1AuthRequest = HttpRequest.newBuilder()
-                .uri(new URI(FUNC_SVC_PREFIX + "/loginCheck"))
+                .uri(new URI(OAUTH_SVC_PREFIX + "/loginCheck"))
                 .GET()
                 .build();
         final var s2Response = cli
                 .send(s1AuthRequest, HttpResponse.BodyHandlers.ofString());
-
         //step 2:302跳转
         assert (s2Response.statusCode() == 302);
         assert(
                 s2Response.headers().firstValue("location").get()
-                        .equals(FUNC_SVC_PREFIX + "/loginCheck?url=" + URLEncoder.encode(OAUTH_SVC_PREFIX, StandardCharsets.UTF_8)));
+                        .equals(OAUTH_SVC_PREFIX + "/login?url=" + URLEncoder.encode(FUNC_SVC_PREFIX+"/oauthByCode", StandardCharsets.UTF_8)));
 
         //step 3 4:授权中心 8082 登录
+        final var step2CallbackUrl = s2Response.headers().firstValue("location").get();
         final var step3and4LoginRequest = HttpRequest.newBuilder()
-                .uri(new URI(OAUTH_SVC_PREFIX + "/login"))
+                .uri(new URI(step2CallbackUrl))
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .POST(HttpRequest.BodyPublishers.ofString("user=zhangsan&password=ohmygod"))
                 .build();
@@ -51,14 +52,19 @@ public class OauthUsage {
 
         //step 5:返回登录是否成功的code
         assert(step5Response.statusCode() == 302);
-        final var code = step5Response.headers().firstValue("code").get();
+        final var step5CallbackUrl = step5Response.headers().firstValue("location").get();
+        assert(step5CallbackUrl.startsWith(FUNC_SVC_PREFIX));
+        final var callbackUrlMatcher = Pattern.compile("\\?code=(.*)")
+                .matcher(step5CallbackUrl);
+        assert(callbackUrlMatcher.matches());
 
         //step 6:向服务提供者 8081 请求登录
         final var step6CodeAuthRequest = HttpRequest.newBuilder()
-                .uri(new URI(FUNC_SVC_PREFIX + "/oauthByCode"))
+                .uri(new URI(step5CallbackUrl))
                 .header("Content-Type", "application/x-www-form-urlencoded")
-                .POST(HttpRequest.BodyPublishers.ofString("code="+code))
                 .build();
         final var step8Response = cli.send(step6CodeAuthRequest, HttpResponse.BodyHandlers.ofString());
     }
+
+    //注册
 }
